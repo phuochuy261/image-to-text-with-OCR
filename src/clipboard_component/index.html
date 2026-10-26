@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="vi">
+<meta charset="utf-8">
+<style>
+  :root { color-scheme: light dark; font-family: system-ui,sans-serif; }
+  body { margin: 0; color: var(--text, #31333f); }
+  #paste { border: 2px dashed #7c8a96; border-radius: 10px; padding: 20px; text-align: center;
+           cursor: text; outline: none; background: var(--secondary, #f4f5f7); }
+  #paste:focus { border-color: #ff4b4b; }
+  #paste strong { display: block; margin-bottom: 5px; }
+  p { margin: 8px 0; font-size: 13px; }
+  #message { min-height: 20px; }
+</style>
+<div id="paste" tabindex="0" role="textbox" aria-label="Dán ảnh từ clipboard">
+  <strong>Bấm vào đây rồi nhấn Ctrl+V để dán ảnh</strong>
+  <span>Bạn có thể dán ảnh mới để thay ảnh hiện tại.</span>
+</div>
+<p id="message" role="status" aria-live="polite">Hỗ trợ ảnh chụp màn hình và thao tác “Sao chép hình ảnh”.</p>
+<script>
+  let maxBytes = 20 * 1024 * 1024;
+  const area = document.getElementById('paste');
+  const message = document.getElementById('message');
+  const send = (type, fields = {}) => window.parent.postMessage({isStreamlitMessage:true, type, ...fields}, '*');
+  window.addEventListener('message', event => {
+    if (event.source !== window.parent || event.data.type !== 'streamlit:render') return;
+    maxBytes = event.data.args.max_bytes || maxBytes;
+    const theme = event.data.theme;
+    if (theme) {
+      document.body.style.setProperty('--text', theme.textColor);
+      document.body.style.setProperty('--secondary', theme.secondaryBackgroundColor);
+    }
+  });
+  document.addEventListener('paste', event => {
+    event.preventDefault();
+    const item = Array.from(event.clipboardData?.items || []).find(value => value.type.startsWith('image/'));
+    const file = item?.getAsFile();
+    if (!file) { message.textContent = 'Clipboard chưa có ảnh. Hãy dùng Sao chép hình ảnh hoặc chụp màn hình rồi dán lại.'; return; }
+    if (file.size > maxBytes) { message.textContent = 'Ảnh vượt quá 20 MB. Hãy giảm kích thước rồi dán lại.'; return; }
+    const reader = new FileReader();
+    reader.onload = () => {
+      send('streamlit:setComponentValue', {value:{data_url:reader.result, id:crypto.randomUUID()}, dataType:'json'});
+      message.textContent = 'Đã nhận ảnh. Xem ảnh bên dưới rồi bấm Nhận dạng văn bản.';
+    };
+    reader.onerror = () => { message.textContent = 'Không đọc được ảnh trong clipboard. Hãy dán lại.'; };
+    reader.readAsDataURL(file);
+  });
+  send('streamlit:componentReady', {apiVersion:1});
+  send('streamlit:setFrameHeight', {height:160});
+</script>
+</html>
